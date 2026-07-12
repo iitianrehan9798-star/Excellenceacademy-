@@ -5297,5 +5297,28 @@ function exportStudyAnalyticsCSV(){
       </div>
     </div>
   </div>
+  <script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-analytics.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+    apiKey: "AIzaSyDjLDYaBDls-Sb9gL4--oMWhK22auBiWGI",
+    authDomain: "excellence-academy-app.firebaseapp.com",
+    projectId: "excellence-academy-app",
+    storageBucket: "excellence-academy-app.firebasestorage.app",
+    messagingSenderId: "428918305201",
+    appId: "1:428918305201:web:3fb30f8a82aa6b798a4d90",
+    measurementId: "G-G7RD326MJW"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+  </script>
 </body>
 </html>
