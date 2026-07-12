@@ -2184,53 +2184,15 @@ MOCK.studentAccounts.forEach(s=>{
   if(FEE_BY_CLASS_JULY2026[s.cls] !== undefined) s.feeAmount = FEE_BY_CLASS_JULY2026[s.cls];
 });
 
-// ================= PERSISTENCE (localStorage) =================
-// Without this, every account Admin creates (students, teachers, monitors),
-// every class report a Monitor logs, every doubt posted, every fee marked
-// paid — all of it only ever lived in this tab's memory. Closing the site (or
-// even just navigating away) reset everything back to the hardcoded defaults
-// below, which is exactly the "monitor/student login stopped working, account
-// disappeared from Admin" bug. This saves the real, changing data to the
-// browser's localStorage and reloads it automatically next time the site opens
-// on the same device/browser.
-// TODO: this only persists per-device/per-browser. The real fix for data to
-// sync across every device (a teacher's phone, Admin's laptop, a parent's
-// tablet, all seeing the same data) is a shared backend — Firebase Firestore —
-// which every TODO comment elsewhere in this file is written to plug into.
-const PERSIST_KEY = "excellenceAcademyData_v1";
-const PERSIST_FIELDS = [
-  "studentAccounts","teachers","monitors","classMonitorReports","doubtWall",
-  "foreignStudents","homework","dailyPractice","notices","youtube","risePdfs",
-  "finance","fee","study","achievements"
-];
-function loadPersistedData(){
-  try{
-    const raw = localStorage.getItem(PERSIST_KEY);
-    if(!raw) return;
-    const saved = JSON.parse(raw);
-    PERSIST_FIELDS.forEach(key=>{
-      if(saved[key] !== undefined) MOCK[key] = saved[key];
-    });
-  } catch(e){
-    console.warn("Could not load saved data, starting fresh:", e);
-  }
-}
-function persistData(){
-  try{
-    const toSave = {};
-    PERSIST_FIELDS.forEach(key=>{ toSave[key] = MOCK[key]; });
-    localStorage.setItem(PERSIST_KEY, JSON.stringify(toSave));
-  } catch(e){
-    console.warn("Could not save data:", e);
-  }
-}
-loadPersistedData();
-// Belt-and-braces autosave: every mutation function below also calls
-// persistData() directly, but this catches anything missed and guarantees a
-// save right before the tab actually closes.
-setInterval(persistData, 2000);
-window.addEventListener("beforeunload", persistData);
-window.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden") persistData(); });
+// Every student's fee is set to Excellence Academy's official July 2026
+// rate card, keyed by class. Admin can still override any individual
+// student's amount afterwards from Edit Student.
+const FEE_BY_CLASS_JULY_2026 = Object.fromEntries(
+  MOCK.fee.structure.filter(([,v])=>v.startsWith("₹")).map(([cls,v])=>[cls, parseInt(v.replace(/[^0-9]/g,""))])
+);
+MOCK.studentAccounts.forEach(s=>{
+  if(FEE_BY_CLASS_JULY_2026[s.cls] !== undefined) s.feeAmount = FEE_BY_CLASS_JULY_2026[s.cls];
+});
 
 // Question bank, keyed by test id (single + multi correct + image question)
 const QUESTIONS_BY_TEST = {
@@ -2530,11 +2492,6 @@ function sendResetLink(){
 
 // ---------------- NAV ----------------
 function go(viewName){
-  // Persist on every navigation: virtually every create/edit/delete action in
-  // this app is immediately followed by a go() call, so this alone catches the
-  // overwhelming majority of changes without needing a persistData() call
-  // bolted onto every single mutation function individually.
-  persistData();
   document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
   document.getElementById("view-"+viewName).classList.add("active");
   document.querySelectorAll(".nav-item").forEach(n=>n.classList.toggle("active", n.dataset.view===viewName));
@@ -4189,7 +4146,7 @@ function adminCreateForeign(){
   const newId = "FS-" + String(MOCK.foreignStudents.length+1).padStart(3,"0");
   MOCK.foreignStudents.push({
     id:newId, name, loginMobile:mobile, password: password || "Welcome@2026",
-    cls, feeAmount: FEE_BY_CLASS_JULY2026[cls] || 0, feePaid:false, batchPurchased:false
+    cls, feeAmount: FEE_BY_CLASS_JULY_2026[cls] || 0, feePaid:false, batchPurchased:false
   });
   document.getElementById("fs-name").value = "";
   document.getElementById("fs-mobile").value = "";
@@ -4204,8 +4161,8 @@ function adminDeleteForeign(i){
 let efTargetIndex = null;
 function efAutoFillFee(){
   const cls = document.getElementById("ef-cls").value;
-  if(FEE_BY_CLASS_JULY2026[cls] !== undefined){
-    document.getElementById("ef-fee").value = FEE_BY_CLASS_JULY2026[cls];
+  if(FEE_BY_CLASS_JULY_2026[cls] !== undefined){
+    document.getElementById("ef-fee").value = FEE_BY_CLASS_JULY_2026[cls];
   }
 }
 function openEditForeignModal(i){
@@ -4451,34 +4408,19 @@ function shareImageCard(type, data, phone){
   document.getElementById("share-card-body").innerHTML = buildShareCardBody(type, data);
   const el = document.getElementById("share-card-sheet");
   if(typeof html2canvas==="undefined"){ alert("Sharing needs an internet connection to render the image."); return; }
-  // Open the WhatsApp tab RIGHT NOW, synchronously, while we're still inside
-  // the original click — not after. Browsers only allow window.open to bypass
-  // the popup blocker when it happens directly inside a user gesture; once
-  // html2canvas's promise resolves later, that gesture has expired and the
-  // open gets silently blocked, which is why "WhatsApp doesn't open by itself"
-  // — the browser was quietly blocking it, not this code failing to try.
-  let waWindow = null;
-  if(navigator.canShare===undefined || !navigator.canShare({files:[new File([""],"x.png",{type:"image/png"})]})){
-    waWindow = window.open(phone ? `https://wa.me/${phone}` : `https://wa.me/`, "_blank");
-  }
   html2canvas(el, {scale:3, backgroundColor:"#ffffff"}).then(canvas=>{
     canvas.toBlob(blob=>{
       const file = new File([blob], "excellence-academy-update.png", {type:"image/png"});
       if(navigator.canShare && navigator.canShare({files:[file]})){
         navigator.share({files:[file], title:"Excellence Academy"}).catch(()=>{});
       } else {
-        // Image auto-downloads and the correct contact's WhatsApp chat is
-        // already open (from above) — only the actual attaching of the photo
-        // needs one manual tap. No website can auto-attach a file into
-        // WhatsApp without the Web Share API; that's a phone OS restriction,
-        // not something this code can bypass.
+        // Fallback: download the image, then open WhatsApp (chat or Web) with
+        // no pre-filled text — this is meant to be shared as an image, not a caption.
         const link = document.createElement("a");
         link.download = "excellence-academy-update.png";
         link.href = canvas.toDataURL("image/png");
         link.click();
-        if(!waWindow || waWindow.closed){
-          window.open(phone ? `https://wa.me/${phone}` : `https://wa.me/`, "_blank");
-        }
+        window.open(phone ? `https://wa.me/${phone}` : `https://wa.me/`, "_blank");
       }
     }, "image/png");
   });
