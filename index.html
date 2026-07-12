@@ -2258,76 +2258,6 @@ let state = {
   studyLbTab:"batch",
   test:{ answers:{}, visited:{}, current:0, timeLeft:60, timerId:null, active:false }
 };
-
-// ---------------- SESSION PERSISTENCE (stay logged in across visits) ----------------
-// Without this, every visit starts back at the Portal screen and everyone has
-// to type their ID/password again. This remembers who was logged in (on this
-// device/browser) so reopening the site goes straight to their home screen.
-// Logging out (or "Switch Account") clears it, same as any normal app.
-const SESSION_KEY = "excellenceAcademySession";
-function saveSession(role, id){
-  try{ localStorage.setItem(SESSION_KEY, JSON.stringify({role, id})); } catch(e){}
-}
-function clearSession(){
-  try{ localStorage.removeItem(SESSION_KEY); } catch(e){}
-}
-function restoreSession(){
-  let sess;
-  try{ sess = JSON.parse(localStorage.getItem(SESSION_KEY)); } catch(e){ return; }
-  if(!sess || !sess.role) return;
-
-  if(sess.role==="student"){
-    const record = MOCK.studentAccounts.find(s=>s.id===sess.id);
-    if(!record) return;
-    state.loggedIn = true; state.role = "student";
-    MOCK.student.id = record.id; MOCK.student.name = record.name; MOCK.student.cls = record.cls;
-    MOCK.student.batch = record.cls + " Batch";
-    const stats = pseudoStatsForId(record.id);
-    MOCK.student.rank = stats.rank; MOCK.student.accuracy = stats.accuracy;
-    document.getElementById("bottom-nav").style.display = "flex";
-    renderHome(); renderProfile();
-    go("home");
-  } else if(sess.role==="foreign"){
-    const fRecord = MOCK.foreignStudents.find(f=>f.id===sess.id);
-    if(!fRecord) return;
-    state.loggedIn = true; state.role = "foreign";
-    MOCK.student.id = fRecord.id; MOCK.student.name = fRecord.name; MOCK.student.cls = fRecord.cls;
-    const fStats = pseudoStatsForId(fRecord.id);
-    MOCK.student.rank = fStats.rank; MOCK.student.accuracy = fStats.accuracy;
-    document.getElementById("bottom-nav").style.display = "flex";
-    if(fRecord.batchPurchased){ renderHome(); renderProfile(); go("home"); }
-    else {
-      document.getElementById("batch-lock-name").textContent = fRecord.cls;
-      document.getElementById("batch-lock-fee").textContent = "₹"+(fRecord.feeAmount||0).toLocaleString('en-IN')+" / month";
-      go("batch-lock");
-    }
-  } else if(sess.role==="teacher"){
-    const teacherRecord = MOCK.teachers.find(t=>t.id===sess.id);
-    if(!teacherRecord) return;
-    state.loggedIn = true; state.role = "teacher";
-    state.currentTeacher = teacherRecord;
-    document.getElementById("teacher-nav").style.display = "flex";
-    document.getElementById("teacher-welcome-name").textContent = "Welcome, " + teacherRecord.name;
-    go("teacher-home");
-  } else if(sess.role==="monitor"){
-    const monRecord = MOCK.monitors.find(m=>m.id===sess.id);
-    if(!monRecord) return;
-    state.loggedIn = true; state.role = "monitor";
-    state.currentMonitor = monRecord;
-    document.getElementById("monitor-nav").style.display = "flex";
-    go("monitor-home");
-  } else if(sess.role==="admin"){
-    state.loggedIn = true; state.role = "admin";
-    document.getElementById("admin-nav").style.display = "flex";
-    go("admin-home");
-  } else if(sess.role==="parent"){
-    if(!MOCK.studentAccounts.some(s=>s.id===sess.id)) return;
-    state.loggedIn = true; state.role = "parent";
-    state.parentChildId = sess.id;
-    go("parent-home");
-  }
-}
-
 // Returns the id used as the key into MOCK.study.logs / achievements for whoever is logged in.
 function currentUserId(){
   if(state.role==="teacher") return (state.currentTeacher && state.currentTeacher.id) || "EA-STAFF-01";
@@ -2456,7 +2386,6 @@ function handleLogin(role){
     document.getElementById("teacher-nav").style.display = "none";
     document.getElementById("monitor-nav").style.display = "none";
     document.getElementById("admin-nav").style.display = "none";
-    saveSession("student", record.id);
     renderHome(); renderProfile();
     go("home");
   } else if(role==="foreign"){
@@ -2489,7 +2418,6 @@ function handleLogin(role){
     document.getElementById("teacher-nav").style.display = "none";
     document.getElementById("monitor-nav").style.display = "none";
     document.getElementById("admin-nav").style.display = "none";
-    saveSession("foreign", fRecord.id);
     if(fRecord.batchPurchased){
       renderHome(); renderProfile();
       go("home");
@@ -2525,7 +2453,6 @@ function handleLogin(role){
     document.getElementById("monitor-nav").style.display = "none";
     document.getElementById("teacher-nav").style.display = "flex";
     document.getElementById("teacher-welcome-name").textContent = "Welcome, " + state.currentTeacher.name;
-    saveSession("teacher", teacherRecord.id);
     go("teacher-home");
   } else if(role==="monitor"){
     const enteredId = (document.getElementById("monitor-id").value || "").trim().toUpperCase();
@@ -2553,7 +2480,6 @@ function handleLogin(role){
     document.getElementById("teacher-nav").style.display = "none";
     document.getElementById("admin-nav").style.display = "none";
     document.getElementById("monitor-nav").style.display = "flex";
-    saveSession("monitor", monRecord.id);
     go("monitor-home");
   } else if(role==="admin"){
     const enteredCode = (document.getElementById("admin-code").value || "").trim();
@@ -2569,7 +2495,6 @@ function handleLogin(role){
     document.getElementById("teacher-nav").style.display = "none";
     document.getElementById("monitor-nav").style.display = "none";
     document.getElementById("admin-nav").style.display = "flex";
-    saveSession("admin", null);
     go("admin-home");
   } else if(role==="parent"){
     document.getElementById("bottom-nav").style.display = "none";
@@ -2580,12 +2505,10 @@ function handleLogin(role){
     // TODO: real implementation verifies the parent's password against the
     // record whose parentMobile/linked-child matches, via Firebase Auth custom claims.
     state.parentChildId = MOCK.studentAccounts.some(s=>s.id===enteredId) ? enteredId : "EA25001";
-    saveSession("parent", state.parentChildId);
     go("parent-home");
   }
 }
 function handleLogout(){
-  clearSession();
   state.loggedIn = false; state.role = null;
   document.getElementById("bottom-nav").style.display = "none";
   document.getElementById("teacher-nav").style.display = "none";
@@ -5277,11 +5200,6 @@ function exportStudyAnalyticsCSV(){
   link.download = "study-analytics-" + todayKey() + ".csv";
   link.click();
 }
-
-// Everything above (MOCK, state, all render/login functions) is defined by
-// this point, so it's now safe to check for a saved session and — if one
-// exists — skip straight past the Portal/login screens to that person's home.
-restoreSession();
 </script>
   <!-- ============ STUDENT BATCH MENU (action sheet) ============ -->
   <div class="modal-overlay hidden" id="student-menu-modal">
